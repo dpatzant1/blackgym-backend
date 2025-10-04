@@ -8,8 +8,9 @@ import {
 } from '../config/database.js';
 import { CategoriaModel } from '../models/index.js';
 import { validateCategoryData, sendResponse, sendError, validatePaginationParams, sanitizeData } from '../utils/validators.js';
-import { HTTP_STATUS, TABLES, PAGINATION } from '../utils/constants.js';
+import { HTTP_STATUS, TABLES, PAGINATION, ACCIONES_BITACORA } from '../utils/constants.js';
 import { logQuery, supabase } from '../config/supabase.js';
+import { registrarAccion } from '../utils/bitacora.js';
 
 // Obtener todas las categorías con paginación
 export const getAllCategorias = async (req, res, next) => {
@@ -157,6 +158,18 @@ export const createCategoria = async (req, res, next) => {
     // Crear categoría en la base de datos
     const newCategoria = await create(TABLES.CATEGORIAS, categoryData);
 
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.CREAR_CATEGORIA,
+        `Categoría creada: ID=${newCategoria.id}, Nombre="${newCategoria.nombre}"`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
+
     sendResponse(res, HTTP_STATUS.CREATED, CategoriaModel.fromDatabase(newCategoria), 'Categoría creada exitosamente');
 
   } catch (error) {
@@ -195,6 +208,28 @@ export const updateCategoria = async (req, res, next) => {
 
     if (!updatedCategoria) {
       return sendError(res, HTTP_STATUS.NOT_FOUND, 'Categoría no encontrada');
+    }
+
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      const cambios = [];
+      
+      if (data.nombre && data.nombre !== existingCategoria.nombre) {
+        cambios.push(`Nombre: "${existingCategoria.nombre}" → "${data.nombre}"`);
+      }
+      if (data.descripcion && data.descripcion !== existingCategoria.descripcion) {
+        cambios.push(`Descripción actualizada`);
+      }
+
+      const cambiosTexto = cambios.length > 0 ? `\n- ${cambios.join('\n- ')}` : '';
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.EDITAR_CATEGORIA,
+        `Categoría ID=${id} actualizada: Nombre="${updatedCategoria.nombre}"${cambiosTexto}`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
     }
 
     sendResponse(res, HTTP_STATUS.OK, CategoriaModel.fromDatabase(updatedCategoria), 'Categoría actualizada exitosamente');
@@ -236,6 +271,18 @@ export const deleteCategoria = async (req, res, next) => {
 
     // Eliminar categoría
     await deleteRecord(TABLES.CATEGORIAS, id);
+
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.ELIMINAR_CATEGORIA,
+        `Categoría eliminada: ID=${id}, Nombre="${existingCategoria.nombre}"`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
 
     sendResponse(res, HTTP_STATUS.OK, null, 'Categoría eliminada exitosamente');
 
@@ -333,6 +380,19 @@ export const assignCategoriasToProducto = async (req, res, next) => {
       .select();
 
     if (insertError) throw insertError;
+
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      const nombresCategories = categoriasExistentes.map(c => c.id).join(', ');
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.ASIGNAR_CATEGORIAS,
+        `Categorías asignadas a producto: Producto ID=${id}, Nombre="${producto.nombre}", Categorías=[${nombresCategories}], Total=${categorias.length}`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
 
     sendResponse(res, HTTP_STATUS.OK, {
       producto: { id: parseInt(id), nombre: producto.nombre },

@@ -1,7 +1,8 @@
 import { uploadFileToStorage, validateFile } from '../utils/storage.js';
 import { AdministradorModel } from '../models/administradores.js';
 import { sendResponse, sendError } from '../utils/validators.js';
-import { HTTP_STATUS, ERROR_MESSAGES } from '../utils/constants.js';
+import { HTTP_STATUS, ERROR_MESSAGES, ACCIONES_BITACORA } from '../utils/constants.js';
+import { registrarAccion } from '../utils/bitacora.js';
 
 /**
  * Controlador para manejo de uploads de archivos
@@ -49,6 +50,19 @@ export const uploadsController = {
 
       // Log de la acción realizada
       console.log(`[UPLOAD] Admin "${usuario}" subió imagen: ${uploadResult.data.fileName}`);
+
+      // Registrar en bitácora
+      try {
+        const adminId = req.adminId || req.admin?.id || authResult.data.id;
+        const sizeMB = (size / (1024 * 1024)).toFixed(2);
+        await registrarAccion(
+          adminId,
+          ACCIONES_BITACORA.SUBIR_IMAGEN,
+          `Imagen subida: Archivo="${originalname}", Nombre generado="${uploadResult.data.fileName}", Tamaño=${sizeMB}MB, URL="${uploadResult.data.publicUrl}"`
+        );
+      } catch (bitacoraError) {
+        console.error('Error al registrar en bitácora:', bitacoraError);
+      }
 
       // Respuesta exitosa
       return sendResponse(

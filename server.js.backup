@@ -3,7 +3,34 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { testConnection, verifyTables, getDatabaseInfo } from './src/config/supabase.js';
 import { errorHandler, notFound, requestLogger } from './src/middleware/errorHandler.js';
-import { CORS_CONFIG } from './src/utils/constants.js';
+import { CORS_CONFIG } f      console.log('👨‍💼 Administradores API:');
+      console.log('   - POST   /api/administradores/verify          (Verificar credenciales)');
+      console.log('   - PUT    /api/administradores/change-password (Cambiar contraseña) 🔒');
+      console.log('   - GET    /api/administradores/profile         (Obtener perfil) 🔒');
+      console.log('   - GET    /api/administradores/admins          (Listar admins) 🔒🔑');
+      console.log('   - PUT    /api/administradores/:id/rol         (Asignar rol) 🔒🔑');
+      console.log('');
+      console.log('📸 Uploads API:');
+      console.log('   - POST   /api/uploads/image      (Subir imagen - máx 5MB) 🔒');
+      console.log('');
+      console.log('📋 Bitácora API (Auditoría):');
+      console.log('   - GET    /api/bitacora           (Listar registros) 🔒👔');
+      console.log('   - GET    /api/bitacora/stats     (Estadísticas) 🔒🔑');
+      console.log('   - GET    /api/bitacora/export    (Exportar CSV/JSON) 🔒🔑');
+      console.log('');
+      console.log('👥 Roles API (Control de Acceso):');
+      console.log('   - GET    /api/roles              (Listar roles) 🔒🔑');
+      console.log('   - GET    /api/roles/:id          (Obtener rol) 🔒🔑');
+      console.log('   - GET    /api/roles/:id/permisos (Permisos del rol) 🔒🔑');
+      console.log('');
+      console.log('🔒 = Requiere autenticación');
+      console.log('🔑 = Solo Administradores');
+      console.log('👔 = Administradores y Gerentes');
+      console.log('📋 Headers requeridos: x-admin-user, x-admin-password');
+      console.log('');
+      console.log('✅ Sistema de Bitácora y Roles completado');
+      console.log('🚀 Control de acceso basado en roles funcionando');
+      console.log('📊 Auditoría completa de acciones administrativas');ils/constants.js';
 
 // Importar rutas
 import productosRoutes from './src/routes/productos.js';
@@ -13,7 +40,6 @@ import administradoresRoutes from './src/routes/administradores.js';
 import uploadsRoutes from './src/routes/uploads.js';
 import bitacoraRoutes from './src/routes/bitacora.js';
 import rolesRoutes from './src/routes/roles.js';
-import dashboardRoutes from './src/routes/dashboard.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -109,7 +135,7 @@ app.get('/', (req, res) => {
       '✅ Validación de archivos (5MB máx, jpg/png/webp)',
       '✅ Sistema de bitácora para auditoría completa',
       '✅ Control de acceso basado en roles (RBAC)',
-      '✅ Gestión de estados de órdenes'
+      '✅ Gestión de estados de órdenes con validación de transiciones'
     ]
   });
 });
@@ -122,7 +148,6 @@ app.use('/api/administradores', administradoresRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/bitacora', bitacoraRoutes);
 app.use('/api/roles', rolesRoutes);
-app.use('/api/dashboard', dashboardRoutes);
 
 // Información general de la API
 app.use('/api', (req, res, next) => {
@@ -165,13 +190,14 @@ app.use('/api', (req, res, next) => {
       ordenes: {
         base: '/api/ordenes',
         endpoints: [
-          'GET    /api/ordenes                  - Listar órdenes (público)',
-          'GET    /api/ordenes/stats           - Estadísticas de órdenes (🔒 PROTEGIDO)',
-          'GET    /api/ordenes/:id             - Obtener orden por ID (público)',
-          'POST   /api/ordenes                 - Crear orden con productos (público)',
-          'PUT    /api/ordenes/:id             - Actualizar datos de orden (🔒 PROTEGIDO)',
-          'DELETE /api/ordenes/:id             - Cancelar orden (🔒 PROTEGIDO)',
-          'GET    /api/ordenes/:id/detalle     - Detalle completo de orden (público)'
+          'GET    /api/ordenes                  - Listar órdenes (🔒 Todos los roles)',
+          'GET    /api/ordenes/stats           - Estadísticas de órdenes (🔒 Todos los roles)',
+          'GET    /api/ordenes/:id             - Obtener orden por ID (🔒 Todos los roles)',
+          'POST   /api/ordenes                 - Crear orden con productos (🔒 Todos los roles)',
+          'PUT    /api/ordenes/:id             - Actualizar datos de orden (🔒 Admin/Gerente)',
+          'PUT    /api/ordenes/:id/estado      - Cambiar estado de orden (🔒 Admin/Gerente)',
+          'DELETE /api/ordenes/:id             - Cancelar orden (🔒 Solo Admin)',
+          'GET    /api/ordenes/:id/detalle     - Detalle completo de orden (🔒 Todos los roles)'
         ]
       },
       administradores: {
@@ -179,7 +205,37 @@ app.use('/api', (req, res, next) => {
         endpoints: [
           'POST   /api/administradores/verify          - Verificar credenciales (público)',
           'PUT    /api/administradores/change-password - Cambiar contraseña (🔒 PROTEGIDO)',
-          'GET    /api/administradores/profile         - Obtener perfil (🔒 PROTEGIDO)'
+          'GET    /api/administradores/profile         - Obtener perfil (🔒 PROTEGIDO)',
+          'GET    /api/administradores/admins          - Listar administradores (🔒 Solo Admin)',
+          'PUT    /api/administradores/:id/rol         - Asignar rol a admin (🔒 Solo Admin)'
+        ]
+      },
+      bitacora: {
+        base: '/api/bitacora',
+        endpoints: [
+          'GET    /api/bitacora                 - Listar bitácora con filtros (🔒 Admin/Gerente)',
+          'GET    /api/bitacora/stats          - Estadísticas de bitácora (🔒 Solo Admin)',
+          'GET    /api/bitacora/export         - Exportar bitácora CSV/JSON (🔒 Solo Admin)',
+          'GET    /api/bitacora/fecha          - Filtrar por rango de fechas (🔒 Admin/Gerente)',
+          'GET    /api/bitacora/admin/:adminId - Registros por administrador (🔒 Admin/Gerente)',
+          'GET    /api/bitacora/accion/:accion - Registros por acción (🔒 Admin/Gerente)'
+        ],
+        description: 'Sistema de auditoría que registra todas las acciones administrativas'
+      },
+      roles: {
+        base: '/api/roles',
+        endpoints: [
+          'GET    /api/roles                      - Listar todos los roles (🔒 Solo Admin)',
+          'GET    /api/roles/stats               - Estadísticas de roles (🔒 Solo Admin)',
+          'GET    /api/roles/nombre/:nombre      - Obtener rol por nombre (🔒 Solo Admin)',
+          'GET    /api/roles/:id                 - Obtener rol por ID (🔒 Solo Admin)',
+          'GET    /api/roles/:id/permisos        - Obtener permisos de un rol (🔒 Solo Admin)',
+          'GET    /api/roles/:id/administradores - Listar admins por rol (🔒 Solo Admin)'
+        ],
+        available_roles: [
+          'administrador - Acceso total al sistema',
+          'gerente - Gestión de productos, categorías y órdenes',
+          'asesor de ventas - Acceso limitado a inventario y órdenes'
         ]
       },
       uploads: {
@@ -222,7 +278,13 @@ app.use('/api', (req, res, next) => {
       '✅ Hash de contraseñas con bcrypt',
       '✅ Upload de imágenes a Supabase Storage',
       '✅ Validación avanzada de archivos',
-      '✅ Logging de acciones administrativas'
+      '✅ Sistema de bitácora completo para auditoría',
+      '✅ Control de acceso basado en roles (RBAC)',
+      '✅ Tres roles: Administrador, Gerente, Asesor de Ventas',
+      '✅ Sistema de permisos granular con wildcards',
+      '✅ Estados de órdenes con validación de transiciones',
+      '✅ Exportación de bitácora en CSV y JSON',
+      '✅ Estadísticas de bitácora y roles'
     ]
   });
 });
@@ -235,7 +297,7 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     console.log('🚀 Iniciando servidor Black Gym Backend...');
-    console.log('📋 Fase 6: Sistema de Órdenes');
+    console.log('📋 Fase 7: Sistema de Bitácora, Roles y Estados de Órdenes');
     console.log('');
 
     // Verificar conexión con Supabase

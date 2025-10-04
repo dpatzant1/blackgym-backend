@@ -8,14 +8,13 @@ export const PAGINATION = {
   MIN_LIMIT: 1
 };
 
-// Estados de órdenes (para futuras implementaciones)
+// Estados de órdenes
 export const ORDER_STATUS = {
   PENDING: 'pendiente',
-  CONFIRMED: 'confirmada',
-  PROCESSING: 'procesando',
-  SHIPPED: 'enviada',
-  DELIVERED: 'entregada',
-  CANCELLED: 'cancelada'
+  PAID: 'pagado',
+  SHIPPED: 'enviado',
+  COMPLETED: 'completado',
+  CANCELLED: 'cancelado'
 };
 
 // Tipos de errores personalizados
@@ -59,7 +58,8 @@ export const HTTP_STATUS = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
-  INTERNAL_SERVER_ERROR: 500
+  INTERNAL_SERVER_ERROR: 500,
+  NOT_IMPLEMENTED: 501
 };
 
 // Configuración de búsqueda
@@ -153,7 +153,9 @@ export const TABLES = {
   ORDENES: 'ordenes',
   DETALLE_ORDEN: 'detalle_orden',
   PRODUCTO_CATEGORIA: 'producto_categoria',
-  ADMINISTRADORES: 'administradores'
+  ADMINISTRADORES: 'administradores',
+  BITACORA: 'bitacora',
+  ROLES: 'roles'
 };
 
 // Configuración de autenticación
@@ -167,6 +169,119 @@ export const AUTH_CONFIG = {
   PASSWORD_REGEX: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
 };
 
+// Acciones de bitácora para auditoría
+export const ACCIONES_BITACORA = {
+  // Autenticación
+  LOGIN: 'LOGIN',
+  LOGOUT: 'LOGOUT',
+  CAMBIAR_PASSWORD: 'CAMBIAR_PASSWORD',
+  
+  // Productos
+  CREAR_PRODUCTO: 'CREAR_PRODUCTO',
+  EDITAR_PRODUCTO: 'EDITAR_PRODUCTO',
+  ELIMINAR_PRODUCTO: 'ELIMINAR_PRODUCTO',
+  ACTUALIZAR_STOCK: 'ACTUALIZAR_STOCK',
+  
+  // Categorías
+  CREAR_CATEGORIA: 'CREAR_CATEGORIA',
+  EDITAR_CATEGORIA: 'EDITAR_CATEGORIA',
+  ELIMINAR_CATEGORIA: 'ELIMINAR_CATEGORIA',
+  ASIGNAR_CATEGORIAS: 'ASIGNAR_CATEGORIAS',
+  REMOVER_CATEGORIA: 'REMOVER_CATEGORIA',
+  
+  // Órdenes
+  CREAR_ORDEN: 'CREAR_ORDEN',
+  EDITAR_ORDEN: 'EDITAR_ORDEN',
+  CANCELAR_ORDEN: 'CANCELAR_ORDEN',
+  CAMBIAR_ESTADO_ORDEN: 'CAMBIAR_ESTADO_ORDEN',
+  
+  // Administradores
+  CREAR_ADMIN: 'CREAR_ADMIN',
+  ASIGNAR_ROL: 'ASIGNAR_ROL',
+  
+  // Uploads
+  SUBIR_IMAGEN: 'SUBIR_IMAGEN',
+  ELIMINAR_IMAGEN: 'ELIMINAR_IMAGEN',
+  
+  // Administradores
+  CREAR_ADMIN: 'CREAR_ADMIN',
+  EDITAR_ADMIN: 'EDITAR_ADMIN',
+  ELIMINAR_ADMIN: 'ELIMINAR_ADMIN'
+};
+
+// Roles del sistema
+export const ROLES_SISTEMA = {
+  ADMINISTRADOR: 'administrador',
+  GERENTE: 'gerente',
+  ASESOR_VENTAS: 'asesor de ventas'
+};
+
+// Permisos del sistema
+export const PERMISOS = {
+  // Productos
+  PRODUCTOS_LEER: 'productos.leer',
+  PRODUCTOS_CREAR: 'productos.crear',
+  PRODUCTOS_EDITAR: 'productos.editar',
+  PRODUCTOS_ELIMINAR: 'productos.eliminar',
+  
+  // Categorías
+  CATEGORIAS_LEER: 'categorias.leer',
+  CATEGORIAS_CREAR: 'categorias.crear',
+  CATEGORIAS_EDITAR: 'categorias.editar',
+  CATEGORIAS_ELIMINAR: 'categorias.eliminar',
+  
+  // Órdenes
+  ORDENES_LEER: 'ordenes.leer',
+  ORDENES_CREAR: 'ordenes.crear',
+  ORDENES_EDITAR: 'ordenes.editar',
+  ORDENES_CANCELAR: 'ordenes.cancelar',
+  ORDENES_CAMBIAR_ESTADO: 'ordenes.cambiar_estado',
+  
+  // Bitácora
+  BITACORA_LEER: 'bitacora.leer',
+  BITACORA_EXPORTAR: 'bitacora.exportar',
+  
+  // Administradores
+  ADMINS_LEER: 'admins.leer',
+  ADMINS_GESTIONAR: 'admins.gestionar',
+  
+  // Roles
+  ROLES_LEER: 'roles.leer',
+  ROLES_ASIGNAR: 'roles.asignar',
+  
+  // Uploads
+  UPLOADS_SUBIR: 'uploads.subir',
+  UPLOADS_ELIMINAR: 'uploads.eliminar'
+};
+
+// Permisos por rol
+export const PERMISOS_POR_ROL = {
+  [ROLES_SISTEMA.ADMINISTRADOR]: ['*'], // Wildcard = todos los permisos
+  
+  [ROLES_SISTEMA.GERENTE]: [
+    PERMISOS.PRODUCTOS_LEER,
+    PERMISOS.PRODUCTOS_CREAR,
+    PERMISOS.PRODUCTOS_EDITAR,
+    PERMISOS.PRODUCTOS_ELIMINAR,
+    PERMISOS.CATEGORIAS_LEER,
+    PERMISOS.CATEGORIAS_CREAR,
+    PERMISOS.CATEGORIAS_EDITAR,
+    PERMISOS.CATEGORIAS_ELIMINAR,
+    PERMISOS.ORDENES_LEER,
+    PERMISOS.ORDENES_EDITAR,
+    PERMISOS.ORDENES_CAMBIAR_ESTADO,
+    PERMISOS.BITACORA_LEER,
+    PERMISOS.UPLOADS_SUBIR
+  ],
+  
+  [ROLES_SISTEMA.ASESOR_VENTAS]: [
+    PERMISOS.PRODUCTOS_LEER,
+    PERMISOS.CATEGORIAS_LEER,
+    PERMISOS.ORDENES_LEER,
+    PERMISOS.ORDENES_CREAR
+  ]
+};
+
 // Headers CORS permitidos
 export const CORS_CONFIG = {
   ALLOWED_ORIGINS: [
@@ -178,4 +293,37 @@ export const CORS_CONFIG = {
   ],
   ALLOWED_METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   ALLOWED_HEADERS: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-admin-user', 'x-admin-password']
+};
+
+// Configuración del Dashboard de Ventas
+export const DASHBOARD = {
+  // Nombres de meses en español (completos)
+  MESES: [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ],
+  
+  // Nombres de meses abreviados (para gráficas)
+  MESES_ABREVIADOS: [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
+  ],
+  
+  // Estados de órdenes que cuentan como ventas válidas
+  // (excluye 'pendiente' y 'cancelado')
+  ESTADOS_VALIDOS_PARA_VENTAS: ['pagado', 'enviado', 'completado'],
+  
+  // Límites por defecto para consultas
+  LIMITE_TOP_PRODUCTOS: 10,
+  LIMITE_TOP_CATEGORIAS: 10,
+  MAX_TOP_PRODUCTOS: 50,
+  
+  // Configuración de caché para dashboard (en milisegundos)
+  CACHE_TTL: {
+    GENERAL: 300000,        // 5 minutos
+    VENTAS_PERIODO: 300000, // 5 minutos
+    TOP_PRODUCTOS: 600000,  // 10 minutos
+    CATEGORIAS: 600000,     // 10 minutos
+    COMPARATIVA: 900000     // 15 minutos
+  }
 };

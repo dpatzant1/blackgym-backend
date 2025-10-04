@@ -81,12 +81,25 @@ export class CategoriaModel {
 
 // Modelo para la tabla ordenes
 export class OrdenModel {
+  // Estados permitidos para órdenes
+  static ESTADOS_PERMITIDOS = ['pendiente', 'pagado', 'enviado', 'completado', 'cancelado'];
+  
+  // Transiciones válidas de estado
+  static TRANSICIONES_PERMITIDAS = {
+    'pendiente': ['pagado', 'cancelado'],
+    'pagado': ['enviado', 'cancelado'],
+    'enviado': ['completado'],
+    'completado': [],
+    'cancelado': []
+  };
+
   constructor(data = {}) {
     this.id = data.id || null;
     this.cliente = data.cliente || '';
     this.telefono = data.telefono || '';
     this.direccion = data.direccion || '';
     this.total = data.total || 0;
+    this.estado = data.estado || 'pendiente'; // Estado por defecto
     this.fecha = data.fecha || new Date();
   }
 
@@ -109,6 +122,11 @@ export class OrdenModel {
       errors.push('El total debe ser mayor a 0');
     }
 
+    // Validar estado
+    if (this.estado && !OrdenModel.esEstadoValido(this.estado)) {
+      errors.push(`Estado inválido. Estados permitidos: ${OrdenModel.ESTADOS_PERMITIDOS.join(', ')}`);
+    }
+
     return errors;
   }
 
@@ -117,12 +135,122 @@ export class OrdenModel {
       cliente: this.cliente.trim(),
       telefono: this.telefono.trim(),
       direccion: this.direccion.trim(),
-      total: parseFloat(this.total)
+      total: parseFloat(this.total),
+      estado: this.estado || 'pendiente'
     };
   }
 
   static fromDatabase(data) {
     return new OrdenModel(data);
+  }
+
+  /**
+   * Validar si un estado es válido
+   * @param {string} estado - Estado a validar
+   * @returns {boolean}
+   */
+  static esEstadoValido(estado) {
+    return OrdenModel.ESTADOS_PERMITIDOS.includes(estado);
+  }
+
+  /**
+   * Validar si una transición de estado es permitida
+   * @param {string} estadoActual - Estado actual de la orden
+   * @param {string} nuevoEstado - Nuevo estado deseado
+   * @returns {Object} - {valido: boolean, error: string}
+   */
+  static validarTransicion(estadoActual, nuevoEstado) {
+    // Validar que ambos estados sean válidos
+    if (!OrdenModel.esEstadoValido(estadoActual)) {
+      return {
+        valido: false,
+        error: `Estado actual inválido: ${estadoActual}`
+      };
+    }
+
+    if (!OrdenModel.esEstadoValido(nuevoEstado)) {
+      return {
+        valido: false,
+        error: `Nuevo estado inválido: ${nuevoEstado}`
+      };
+    }
+
+    // No permitir transición al mismo estado
+    if (estadoActual === nuevoEstado) {
+      return {
+        valido: false,
+        error: `La orden ya se encuentra en estado "${estadoActual}"`
+      };
+    }
+
+    // Verificar si la transición está permitida
+    const transicionesPermitidas = OrdenModel.TRANSICIONES_PERMITIDAS[estadoActual];
+    
+    if (!transicionesPermitidas || transicionesPermitidas.length === 0) {
+      return {
+        valido: false,
+        error: `El estado "${estadoActual}" es final y no permite cambios`
+      };
+    }
+
+    if (!transicionesPermitidas.includes(nuevoEstado)) {
+      return {
+        valido: false,
+        error: `No se puede cambiar de "${estadoActual}" a "${nuevoEstado}". Estados permitidos: ${transicionesPermitidas.join(', ')}`
+      };
+    }
+
+    return {
+      valido: true,
+      error: null
+    };
+  }
+
+  /**
+   * Obtener estados siguientes permitidos desde un estado actual
+   * @param {string} estadoActual - Estado actual
+   * @returns {Array<string>} - Lista de estados permitidos
+   */
+  static obtenerEstadosPermitidos(estadoActual) {
+    if (!OrdenModel.esEstadoValido(estadoActual)) {
+      return [];
+    }
+    return OrdenModel.TRANSICIONES_PERMITIDAS[estadoActual] || [];
+  }
+
+  /**
+   * Verificar si un estado es final (no permite más cambios)
+   * @param {string} estado - Estado a verificar
+   * @returns {boolean}
+   */
+  static esEstadoFinal(estado) {
+    const permitidos = OrdenModel.TRANSICIONES_PERMITIDAS[estado];
+    return permitidos && permitidos.length === 0;
+  }
+
+  /**
+   * Cambiar el estado de la orden (método de instancia)
+   * @param {string} nuevoEstado - Nuevo estado
+   * @returns {Object} - {success: boolean, error: string}
+   */
+  cambiarEstado(nuevoEstado) {
+    const validacion = OrdenModel.validarTransicion(this.estado, nuevoEstado);
+    
+    if (!validacion.valido) {
+      return {
+        success: false,
+        error: validacion.error
+      };
+    }
+
+    const estadoAnterior = this.estado;
+    this.estado = nuevoEstado;
+
+    return {
+      success: true,
+      estadoAnterior,
+      estadoNuevo: nuevoEstado
+    };
   }
 }
 
@@ -205,3 +333,8 @@ export class ProductoCategoriaModel {
     return new ProductoCategoriaModel(data);
   }
 }
+
+// Exportar modelos adicionales
+export { BitacoraModel } from './bitacora.js';
+export { RolModel } from './roles.js';
+export { AdministradorModel } from './administradores.js';

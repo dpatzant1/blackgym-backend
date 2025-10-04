@@ -17,8 +17,9 @@ import {
 } from '../config/database.js';
 import { ProductoModel } from '../models/index.js';
 import { validateProductData, sendResponse, sendError, validatePaginationParams, sanitizeData } from '../utils/validators.js';
-import { HTTP_STATUS, TABLES, PAGINATION } from '../utils/constants.js';
+import { HTTP_STATUS, TABLES, PAGINATION, ACCIONES_BITACORA } from '../utils/constants.js';
 import { logQuery } from '../config/supabase.js';
+import { registrarAccion } from '../utils/bitacora.js';
 
 // Obtener todos los productos con paginación y filtros
 export const getAllProductos = async (req, res, next) => {
@@ -111,6 +112,19 @@ export const createProducto = async (req, res, next) => {
     // Obtener el producto con sus categorías para la respuesta
     const productoCompleto = await getProductoWithCategorias(newProducto.id);
 
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      const categoriasInfo = categorias && categorias.length > 0 ? `, Categorías=[${categorias.join(', ')}]` : '';
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.CREAR_PRODUCTO,
+        `Producto creado: ID=${newProducto.id}, Nombre="${newProducto.nombre}", Precio=${newProducto.precio}, Stock=${newProducto.stock}${categoriasInfo}`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
+
     sendResponse(res, HTTP_STATUS.CREATED, productoCompleto, 'Producto creado exitosamente');
 
   } catch (error) {
@@ -170,6 +184,37 @@ export const updateProducto = async (req, res, next) => {
     // Obtener el producto actualizado con sus categorías para la respuesta
     const productoCompleto = await getProductoWithCategorias(id);
 
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      const cambios = [];
+      
+      if (productData.nombre && productData.nombre !== existingProducto.nombre) {
+        cambios.push(`Nombre: "${existingProducto.nombre}" → "${productData.nombre}"`);
+      }
+      if (productData.precio !== undefined && productData.precio !== existingProducto.precio) {
+        cambios.push(`Precio: ${existingProducto.precio} → ${productData.precio}`);
+      }
+      if (productData.stock !== undefined && productData.stock !== existingProducto.stock) {
+        cambios.push(`Stock: ${existingProducto.stock} → ${productData.stock}`);
+      }
+      if (productData.descripcion && productData.descripcion !== existingProducto.descripcion) {
+        cambios.push(`Descripción actualizada`);
+      }
+      if (categorias !== undefined) {
+        cambios.push(`Categorías actualizadas`);
+      }
+
+      const cambiosTexto = cambios.length > 0 ? `\n- ${cambios.join('\n- ')}` : '';
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.EDITAR_PRODUCTO,
+        `Producto ID=${id} actualizado: Nombre="${productoCompleto.nombre}"${cambiosTexto}`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
+
     sendResponse(res, HTTP_STATUS.OK, productoCompleto, 'Producto actualizado exitosamente');
 
   } catch (error) {
@@ -197,6 +242,18 @@ export const deleteProducto = async (req, res, next) => {
 
     // Eliminar producto
     await deleteRecord(TABLES.PRODUCTOS, id);
+
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.ELIMINAR_PRODUCTO,
+        `Producto eliminado: ID=${id}, Nombre="${existingProducto.nombre}", Precio=${existingProducto.precio}, Stock=${existingProducto.stock}`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
 
     sendResponse(res, HTTP_STATUS.OK, null, 'Producto eliminado exitosamente');
 
@@ -316,6 +373,19 @@ export const updateProductStock = async (req, res, next) => {
 
     // Actualizar solo el stock
     const updatedProducto = await update(TABLES.PRODUCTOS, id, { stock: newStock });
+
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      const operacionTexto = operation === 'set' ? 'establecido a' : operation === 'add' ? 'incrementado en' : 'decrementado en';
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.ACTUALIZAR_STOCK,
+        `Stock actualizado: Producto ID=${id}, Nombre="${existingProducto.nombre}", Stock anterior=${existingProducto.stock}, Stock nuevo=${newStock} (${operacionTexto} ${stock})`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
 
     sendResponse(res, HTTP_STATUS.OK, {
       id: parseInt(id),

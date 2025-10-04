@@ -1,6 +1,7 @@
 import express from 'express';
 import { administradorController } from '../controllers/administradores.js';
 import { requireAdminAuth, logAdminAction } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/roles.js';
 
 const router = express.Router();
 
@@ -38,16 +39,89 @@ router.get('/profile',
 /**
  * GET /api/auth/admins
  * Listar todos los administradores
- * Requiere autenticación previa
+ * Requiere autenticación de administrador (solo administradores pueden ver lista)
  */
 router.get('/admins',
   requireAdminAuth,                            // 1. Verificar autenticación admin
-  logAdminAction,                              // 2. Log de la acción administrativa
-  administradorController.listarAdministradores // 3. Ejecutar controlador
+  requireAdmin(),                              // 2. Verificar que sea rol administrador
+  logAdminAction,                              // 3. Log de la acción administrativa
+  administradorController.listarAdministradores // 4. Ejecutar controlador
 );
 
 /**
- * GET /api/auth/status
+ * POST /api/administradores
+ * Crear un nuevo administrador
+ * Requiere autenticación de administrador (solo administradores pueden crear otros)
+ * Protección: Solo administradores
+ * Bitácora: CREAR_ADMIN
+ */
+router.post('/',
+  requireAdminAuth,                            // 1. Verificar autenticación admin
+  requireAdmin(),                              // 2. Verificar que sea rol administrador
+  logAdminAction,                              // 3. Log de la acción administrativa
+  administradorController.crearAdministrador   // 4. Ejecutar controlador
+);
+
+/**
+ * GET /api/administradores/:id
+ * Obtener un administrador por ID
+ * Requiere autenticación de administrador
+ * Protección: Solo administradores
+ */
+router.get('/:id',
+  requireAdminAuth,                                  // 1. Verificar autenticación admin
+  requireAdmin(),                                    // 2. Verificar que sea rol administrador
+  logAdminAction,                                    // 3. Log de la acción administrativa
+  administradorController.obtenerAdministradorPorId  // 4. Ejecutar controlador
+);
+
+/**
+ * PUT /api/administradores/:id
+ * Actualizar un administrador existente
+ * Requiere autenticación de administrador (solo administradores pueden actualizar)
+ * Protección: Solo administradores
+ * Bitácora: EDITAR_ADMIN
+ */
+router.put('/:id',
+  requireAdminAuth,                                // 1. Verificar autenticación admin
+  requireAdmin(),                                  // 2. Verificar que sea rol administrador
+  logAdminAction,                                  // 3. Log de la acción administrativa
+  administradorController.actualizarAdministrador  // 4. Ejecutar controlador
+);
+
+/**
+ * DELETE /api/administradores/:id
+ * Eliminar un administrador
+ * Requiere autenticación de administrador (solo administradores pueden eliminar)
+ * Protección: Solo administradores
+ * Bitácora: ELIMINAR_ADMIN
+ * Restricciones:
+ * - No se puede eliminar a sí mismo
+ * - No se puede eliminar el último administrador del sistema
+ */
+router.delete('/:id',
+  requireAdminAuth,                               // 1. Verificar autenticación admin
+  requireAdmin(),                                 // 2. Verificar que sea rol administrador
+  logAdminAction,                                 // 3. Log de la acción administrativa
+  administradorController.eliminarAdministrador   // 4. Ejecutar controlador
+);
+
+/**
+ * PUT /api/administradores/:id/rol
+ * Asignar rol a un administrador
+ * Requiere autenticación de administrador (solo administradores pueden asignar roles)
+ * Protección: Solo administradores
+ * Bitácora: ASIGNAR_ROL
+ */
+router.put('/:id/rol',
+  requireAdminAuth,                     // 1. Verificar autenticación admin
+  requireAdmin(),                       // 2. Verificar que sea rol administrador
+  logAdminAction,                       // 3. Log de la acción administrativa
+  administradorController.asignarRol    // 4. Ejecutar controlador
+);
+
+/**
+ * GET /api/administradores/status
  * Verificar estado del sistema de administración
  * No requiere autenticación (información pública del sistema)
  */
@@ -97,11 +171,25 @@ router.get('/', (req, res) => {
       },
       'GET /admins': {
         description: 'Listar todos los administradores',
-        authentication: 'required (admin)',
+        authentication: 'required (solo administradores)',
         headers: {
           'x-admin-user': 'usuario del administrador',
           'x-admin-password': 'contraseña del administrador'
-        }
+        },
+        role: 'Solo administradores pueden ver la lista'
+      },
+      'PUT /:id/rol': {
+        description: 'Asignar rol a un administrador',
+        authentication: 'required (solo administradores)',
+        headers: {
+          'x-admin-user': 'usuario del administrador',
+          'x-admin-password': 'contraseña del administrador'
+        },
+        body: {
+          rol_id: 'number (required) - ID del rol a asignar (1=administrador, 2=gerente, 3=asesor de ventas)'
+        },
+        role: 'Solo administradores pueden asignar roles',
+        bitacora: 'ASIGNAR_ROL'
       },
       'GET /status': {
         description: 'Estado del sistema de administración',

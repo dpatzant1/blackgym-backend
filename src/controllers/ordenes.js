@@ -8,8 +8,9 @@ import {
 } from '../config/database.js';
 import { OrdenModel, DetalleOrdenModel } from '../models/index.js';
 import { validateOrderData, sendResponse, sendError, validatePaginationParams, sanitizeData } from '../utils/validators.js';
-import { HTTP_STATUS, TABLES, PAGINATION, ORDER_STATUS } from '../utils/constants.js';
+import { HTTP_STATUS, TABLES, PAGINATION, ORDER_STATUS, ACCIONES_BITACORA } from '../utils/constants.js';
 import { logQuery, supabase } from '../config/supabase.js';
+import { registrarAccion } from '../utils/bitacora.js';
 
 // Obtener todas las órdenes con paginación
 export const getAllOrdenes = async (req, res, next) => {
@@ -38,6 +39,7 @@ export const getAllOrdenes = async (req, res, next) => {
           telefono,
           direccion,
           total,
+          estado,
           fecha,
           detalle_orden (
             id,
@@ -117,6 +119,7 @@ export const getOrdenById = async (req, res, next) => {
           telefono,
           direccion,
           total,
+          estado,
           fecha,
           detalle_orden (
             id,
@@ -286,6 +289,7 @@ export const createOrden = async (req, res, next) => {
         telefono,
         direccion,
         total,
+        estado,
         fecha,
         detalle_orden (
           id,
@@ -361,6 +365,31 @@ export const updateOrden = async (req, res, next) => {
 
     if (!updatedOrden) {
       return sendError(res, HTTP_STATUS.NOT_FOUND, 'Orden no encontrada');
+    }
+
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      const cambios = [];
+      
+      if (updateData.cliente && updateData.cliente !== existingOrden.cliente) {
+        cambios.push(`Cliente: "${existingOrden.cliente}" → "${updateData.cliente}"`);
+      }
+      if (updateData.telefono && updateData.telefono !== existingOrden.telefono) {
+        cambios.push(`Teléfono: "${existingOrden.telefono}" → "${updateData.telefono}"`);
+      }
+      if (updateData.direccion && updateData.direccion !== existingOrden.direccion) {
+        cambios.push(`Dirección actualizada`);
+      }
+
+      const cambiosTexto = cambios.length > 0 ? `\n- ${cambios.join('\n- ')}` : '';
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.EDITAR_ORDEN,
+        `Orden ID=${id} actualizada: Cliente="${updatedOrden.cliente}", Total=${updatedOrden.total}${cambiosTexto}`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
     }
 
     sendResponse(res, HTTP_STATUS.OK, OrdenModel.fromDatabase(updatedOrden), 'Orden actualizada exitosamente');
@@ -476,7 +505,94 @@ export const cancelOrden = async (req, res, next) => {
     // Eliminar orden (esto eliminará automáticamente los detalles por CASCADE)
     await deleteRecord(TABLES.ORDENES, id);
 
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.CANCELAR_ORDEN,
+        `Orden ID=${id} cancelada: Cliente="${orden.cliente}", Total=${orden.total}, Productos restaurados al stock (${detalles.length} productos)`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
+
     sendResponse(res, HTTP_STATUS.OK, null, 'Orden cancelada exitosamente y stock restaurado');
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Cambiar estado de orden
+export const cambiarEstadoOrden = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { nuevoEstado } = req.body;
+
+    if (!id || isNaN(parseInt(id))) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'ID de orden inválido');
+    }
+
+    if (!nuevoEstado || typeof nuevoEstado !== 'string') {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Debe proporcionar un nuevo estado válido');
+    }
+
+    // Verificar que la orden existe
+    const orden = await getById(TABLES.ORDENES, id);
+    if (!orden) {
+      return sendError(res, HTTP_STATUS.NOT_FOUND, 'Orden no encontrada');
+    }
+
+    const estadoActual = orden.estado || ORDER_STATUS.PENDIENTE;
+
+    // Validar que el nuevo estado es válido
+    if (!OrdenModel.esEstadoValido(nuevoEstado)) {
+      return sendError(
+        res,
+        HTTP_STATUS.BAD_REQUEST,
+        `Estado "${nuevoEstado}" no es válido. Estados permitidos: ${OrdenModel.ESTADOS_PERMITIDOS.join(', ')}`
+      );
+    }
+
+    // Validar que la transición es permitida
+    const transicionValida = OrdenModel.validarTransicion(estadoActual, nuevoEstado);
+    if (!transicionValida.valido) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, transicionValida.mensaje);
+    }
+
+    logQuery(TABLES.ORDENES, 'cambiar_estado', { id, estadoActual, nuevoEstado });
+
+    // Actualizar estado
+    const ordenActualizada = await update(TABLES.ORDENES, id, { estado: nuevoEstado });
+
+    if (!ordenActualizada) {
+      return sendError(res, HTTP_STATUS.NOT_FOUND, 'Orden no encontrada');
+    }
+
+    // Registrar en bitácora
+    try {
+      const adminId = req.adminId || req.admin?.id;
+      await registrarAccion(
+        adminId,
+        ACCIONES_BITACORA.CAMBIAR_ESTADO_ORDEN,
+        `Orden ID=${id} cambió de estado: "${estadoActual}" → "${nuevoEstado}". Cliente="${orden.cliente}", Total=${orden.total}`
+      );
+    } catch (bitacoraError) {
+      console.error('Error al registrar en bitácora:', bitacoraError);
+    }
+
+    // Obtener estados permitidos siguientes
+    const estadosPermitidos = OrdenModel.obtenerEstadosPermitidos(nuevoEstado);
+
+    sendResponse(res, HTTP_STATUS.OK, {
+      ...OrdenModel.fromDatabase(ordenActualizada),
+      cambio: {
+        estadoAnterior: estadoActual,
+        estadoNuevo: nuevoEstado,
+        siguientesEstadosPermitidos: estadosPermitidos
+      }
+    }, 'Estado de orden actualizado exitosamente');
 
   } catch (error) {
     next(error);
