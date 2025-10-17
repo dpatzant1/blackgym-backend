@@ -289,10 +289,27 @@ export const CORS_CONFIG = {
     'http://localhost:3000', // React dev
     'http://localhost:3001', // React dev (puerto alternativo)
     'http://localhost:5173', // Vite dev
-    'https://tu-dominio.com' // Producción
+    'https://blackgym.fit', // Producción web
+    'https://admin.blackgym.fit', // Panel admin
+    'https://api.blackgym.fit', // API
+    // Orígenes para apps móviles
+    'capacitor://localhost', // Capacitor iOS
+    'ionic://localhost', // Ionic
+    'http://localhost', // Apps móviles Android en desarrollo
+    null // Permitir peticiones sin origen (apps móviles nativas)
   ],
-  ALLOWED_METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  ALLOWED_HEADERS: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-admin-user', 'x-admin-password']
+  ALLOWED_METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  ALLOWED_HEADERS: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'x-admin-user', 
+    'x-admin-password',
+    'Accept',
+    'Origin',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers'
+  ]
 };
 
 // Configuración del Dashboard de Ventas

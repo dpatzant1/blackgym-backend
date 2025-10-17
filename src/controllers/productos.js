@@ -14,7 +14,7 @@ import {
   assignCategoriasToProducto,
   getCategoriasDeProducto,
   removeAllCategoriasFromProducto
-} from '../config/database.js';
+} from '../config/supabase.js';
 import { ProductoModel } from '../models/index.js';
 import { validateProductData, sendResponse, sendError, validatePaginationParams, sanitizeData } from '../utils/validators.js';
 import { HTTP_STATUS, TABLES, PAGINATION, ACCIONES_BITACORA } from '../utils/constants.js';

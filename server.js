@@ -14,6 +14,11 @@ import uploadsRoutes from './src/routes/uploads.js';
 import bitacoraRoutes from './src/routes/bitacora.js';
 import rolesRoutes from './src/routes/roles.js';
 import dashboardRoutes from './src/routes/dashboard.js';
+import usuariosRoutes from './src/routes/usuarios.js';
+import rutinasRoutes from './src/routes/rutinas.js';
+import recomendacionesRoutes from './src/routes/recomendaciones.js';
+import progresoRoutes from './src/routes/progreso.js';
+import entrenamientosRoutes from './src/routes/historialEntrenamientos.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -22,11 +27,36 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middlewares básicos
+// Configuración de CORS mejorada para soportar apps móviles
 app.use(cors({
-  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : CORS_CONFIG.ALLOWED_ORIGINS,
+  origin: function (origin, callback) {
+    // Permitir peticiones sin origen (apps móviles nativas)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Obtener orígenes permitidos del .env o usar los predeterminados
+    const allowedOrigins = process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.split(',') 
+      : CORS_CONFIG.ALLOWED_ORIGINS.filter(o => o !== null);
+    
+    // Verificar si el origen está permitido
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      // En desarrollo, permitir cualquier origen para facilitar testing
+      if (process.env.NODE_ENV === 'development') {
+        callback(null, true);
+      } else {
+        callback(new Error('No permitido por CORS'));
+      }
+    }
+  },
   credentials: true,
   methods: CORS_CONFIG.ALLOWED_METHODS,
-  allowedHeaders: CORS_CONFIG.ALLOWED_HEADERS
+  allowedHeaders: CORS_CONFIG.ALLOWED_HEADERS,
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // Cache preflight por 24 horas
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -123,6 +153,11 @@ app.use('/api/uploads', uploadsRoutes);
 app.use('/api/bitacora', bitacoraRoutes);
 app.use('/api/roles', rolesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/rutinas', rutinasRoutes);
+app.use('/api/recomendaciones', recomendacionesRoutes);
+app.use('/api/progreso', progresoRoutes);
+app.use('/api/entrenamientos', entrenamientosRoutes);
 
 // Información general de la API
 app.use('/api', (req, res, next) => {

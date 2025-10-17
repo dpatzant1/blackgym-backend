@@ -5,7 +5,7 @@ import {
   update, 
   deleteRecord,
   checkStock
-} from '../config/database.js';
+} from '../config/supabase.js';
 import { OrdenModel, DetalleOrdenModel } from '../models/index.js';
 import { validateOrderData, sendResponse, sendError, validatePaginationParams, sanitizeData } from '../utils/validators.js';
 import { HTTP_STATUS, TABLES, PAGINATION, ORDER_STATUS, ACCIONES_BITACORA } from '../utils/constants.js';
@@ -642,6 +642,305 @@ export const getOrdenesStats = async (req, res, next) => {
     };
 
     sendResponse(res, HTTP_STATUS.OK, estadisticas, 'Estadísticas de órdenes obtenidas exitosamente');
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==================== FUNCIONES PARA APP MÓVIL ====================
+
+/**
+ * Crear orden desde app móvil (usuario autenticado)
+ * Vincula la orden con el usuario_id del JWT
+ */
+export const crearOrdenUsuario = async (req, res, next) => {
+  try {
+    const usuarioId = req.usuario.id; // Del JWT
+    const data = sanitizeData(req.body);
+    const { productos, ...ordenData } = data;
+
+    // Validar datos básicos de la orden
+    validateOrderData(ordenData);
+
+    // Validar que se incluyan productos
+    if (!productos || !Array.isArray(productos) || productos.length === 0) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Se requiere al menos un producto en la orden');
+    }
+
+    // Validar estructura de productos
+    for (const producto of productos) {
+      if (!producto.id || !producto.cantidad || producto.cantidad <= 0) {
+        return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Cada producto debe tener id y cantidad válidos');
+      }
+    }
+
+    logQuery(TABLES.ORDENES, 'create_usuario', { usuarioId, orden: ordenData, productos });
+
+    // Verificar stock disponible
+    const stockCheck = await checkStock(productos);
+    const stockInsuficiente = stockCheck.filter(item => !item.stockSuficiente);
+
+    if (stockInsuficiente.length > 0) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Stock insuficiente para algunos productos', {
+        productosConStockInsuficiente: stockInsuficiente
+      });
+    }
+
+    // Obtener precios actuales de los productos
+    const productIds = productos.map(p => p.id);
+    const { data: productosDB, error: productosError } = await supabase
+      .from('productos')
+      .select('id, nombre, precio, stock')
+      .in('id', productIds)
+      .order('id');
+
+    if (productosError) throw productosError;
+
+    if (productosDB.length !== productos.length) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'Uno o más productos no existen');
+    }
+
+    // Calcular total
+    const productMap = new Map(productosDB.map(p => [p.id, p]));
+    let totalCalculado = 0;
+    const detallesParaCrear = productos.map(producto => {
+      const productoDB = productMap.get(producto.id);
+      const subtotal = productoDB.precio * producto.cantidad;
+      totalCalculado += subtotal;
+
+      return {
+        producto_id: producto.id,
+        cantidad: producto.cantidad,
+        precio_unitario: productoDB.precio
+      };
+    });
+
+    // Validar total (con tolerancia de 0.01)
+    if (Math.abs(ordenData.total - totalCalculado) > 0.01) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 
+        `El total enviado (${ordenData.total}) no coincide con el total calculado (${totalCalculado})`);
+    }
+
+    // Crear orden con usuario_id
+    const orden = new OrdenModel({
+      ...ordenData,
+      usuario_id: usuarioId // Vincular con el usuario
+    });
+    const orderData = orden.toDatabase();
+
+    const nuevaOrden = await create(TABLES.ORDENES, orderData);
+
+    // Crear detalles de la orden
+    const detallesConOrdenId = detallesParaCrear.map(detalle => ({
+      ...detalle,
+      orden_id: nuevaOrden.id
+    }));
+
+    const { data: detallesCreados, error: detallesError } = await supabase
+      .from('detalle_orden')
+      .insert(detallesConOrdenId)
+      .select();
+
+    if (detallesError) {
+      await deleteRecord(TABLES.ORDENES, nuevaOrden.id);
+      throw detallesError;
+    }
+
+    // Actualizar stock de productos
+    const updatePromises = productos.map(async (producto) => {
+      const productoDB = productMap.get(producto.id);
+      const nuevoStock = productoDB.stock - producto.cantidad;
+      
+      return supabase
+        .from('productos')
+        .update({ stock: nuevoStock })
+        .eq('id', producto.id)
+        .select('id');
+    });
+
+    const stockUpdateResults = await Promise.all(updatePromises);
+    const stockErrors = stockUpdateResults.filter(result => result.error);
+
+    if (stockErrors.length > 0) {
+      await deleteRecord(TABLES.ORDENES, nuevaOrden.id);
+      throw new Error('Error al actualizar stock de productos');
+    }
+
+    // Obtener orden completa con detalles
+    const { data: ordenCompleta, error: ordenCompletaError } = await supabase
+      .from('ordenes')
+      .select(`
+        id,
+        cliente,
+        telefono,
+        direccion,
+        total,
+        estado,
+        fecha,
+        usuario_id,
+        detalle_orden (
+          id,
+          cantidad,
+          precio_unitario,
+          productos (
+            id,
+            nombre,
+            precio,
+            imagen_url
+          )
+        )
+      `)
+      .eq('id', nuevaOrden.id)
+      .single();
+
+    if (ordenCompletaError) throw ordenCompletaError;
+
+    sendResponse(res, HTTP_STATUS.CREATED, {
+      ...ordenCompleta,
+      detalles: ordenCompleta.detalle_orden,
+      totalItems: ordenCompleta.detalle_orden.reduce((sum, d) => sum + d.cantidad, 0)
+    }, '¡Orden creada exitosamente! 🎉');
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Obtener historial de órdenes del usuario autenticado
+ */
+export const obtenerOrdenesUsuario = async (req, res, next) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const page = parseInt(req.query.page) || PAGINATION.DEFAULT_PAGE;
+    const limit = Math.min(parseInt(req.query.limit) || PAGINATION.DEFAULT_LIMIT, PAGINATION.MAX_LIMIT);
+    const estado = req.query.estado; // Filtro opcional por estado
+
+    validatePaginationParams(page, limit);
+
+    logQuery(TABLES.ORDENES, 'get_by_usuario', { usuarioId, page, limit, estado });
+
+    const { from, to } = { from: (page - 1) * limit, to: page * limit - 1 };
+
+    // Query con filtro de usuario
+    let query = supabase
+      .from('ordenes')
+      .select(`
+        id,
+        cliente,
+        telefono,
+        direccion,
+        total,
+        estado,
+        fecha,
+        detalle_orden (
+          id,
+          cantidad,
+          precio_unitario,
+          productos (
+            id,
+            nombre,
+            imagen_url
+          )
+        )
+      `, { count: 'exact' })
+      .eq('usuario_id', usuarioId)
+      .order('fecha', { ascending: false })
+      .range(from, to);
+
+    // Aplicar filtro de estado si se proporciona
+    if (estado && Object.values(ORDER_STATUS).includes(estado.toUpperCase())) {
+      query = query.eq('estado', estado.toUpperCase());
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) throw error;
+
+    const ordenesConInfo = data.map(orden => ({
+      ...orden,
+      detalles: orden.detalle_orden,
+      totalItems: orden.detalle_orden.reduce((sum, d) => sum + d.cantidad, 0),
+      productosUnicos: orden.detalle_orden.length
+    }));
+
+    sendResponse(res, HTTP_STATUS.OK, {
+      ordenes: ordenesConInfo,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / limit),
+        hasNext: to < count - 1,
+        hasPrev: page > 1
+      }
+    }, 'Órdenes obtenidas exitosamente');
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Obtener detalle de una orden específica del usuario
+ * Solo puede ver sus propias órdenes
+ */
+export const obtenerDetalleOrdenUsuario = async (req, res, next) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const { id } = req.params;
+
+    if (!id || isNaN(parseInt(id))) {
+      return sendError(res, HTTP_STATUS.BAD_REQUEST, 'ID de orden inválido');
+    }
+
+    logQuery(TABLES.ORDENES, 'get_detalle_usuario', { usuarioId, ordenId: id });
+
+    const { data: orden, error } = await supabase
+      .from('ordenes')
+      .select(`
+        id,
+        cliente,
+        telefono,
+        direccion,
+        total,
+        estado,
+        fecha,
+        usuario_id,
+        detalle_orden (
+          id,
+          cantidad,
+          precio_unitario,
+          productos (
+            id,
+            nombre,
+            descripcion,
+            precio,
+            imagen_url
+          )
+        )
+      `)
+      .eq('id', id)
+      .eq('usuario_id', usuarioId) // Validar que la orden pertenezca al usuario
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return sendError(res, HTTP_STATUS.NOT_FOUND, 'Orden no encontrada o no tienes permiso para verla');
+      }
+      throw error;
+    }
+
+    const ordenCompleta = {
+      ...orden,
+      detalles: orden.detalle_orden,
+      totalItems: orden.detalle_orden.reduce((sum, d) => sum + d.cantidad, 0),
+      productosUnicos: orden.detalle_orden.length,
+      subtotal: orden.detalle_orden.reduce((sum, d) => sum + (d.cantidad * d.precio_unitario), 0)
+    };
+
+    sendResponse(res, HTTP_STATUS.OK, ordenCompleta, 'Detalle de orden obtenido exitosamente');
 
   } catch (error) {
     next(error);

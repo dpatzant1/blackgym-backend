@@ -7,25 +7,70 @@ import {
   getDetalleOrden,
   cancelOrden,
   getOrdenesStats,
-  cambiarEstadoOrden
+  cambiarEstadoOrden,
+  crearOrdenUsuario,
+  obtenerOrdenesUsuario,
+  obtenerDetalleOrdenUsuario
 } from '../controllers/ordenes.js';
 import { requireAdminAuth, logAdminAction } from '../middleware/auth.js';
 import { requireRole, requireAdmin } from '../middleware/roles.js';
+import { requireUserAuth, logUserAction } from '../middleware/authUsuarios.js';
 
 const router = express.Router();
 
 /**
  * Rutas de Órdenes
  * 
- * Protección de roles:
+ * Protección de roles (Administradores):
  * - Ver órdenes: Administrador, Gerente, Asesor de Ventas
  * - Cambiar estado: Administrador, Gerente
  * - Editar: Administrador, Gerente
  * - Cancelar: Solo Administrador
  * - Estadísticas: Administrador, Gerente, Asesor de Ventas
+ * 
+ * Rutas para Usuarios App Móvil:
+ * - Crear orden: Usuario autenticado (JWT)
+ * - Ver mis órdenes: Usuario autenticado (JWT)
+ * - Ver detalle de mi orden: Usuario autenticado (JWT)
  */
 
-// ==================== RUTAS PROTEGIDAS CON ROLES ====================
+// ==================== RUTAS PARA APP MÓVIL (USUARIOS) ====================
+
+/**
+ * @route   POST /api/ordenes/usuario
+ * @desc    Crear orden desde app móvil (vinculada a usuario_id)
+ * @access  Privado (Usuario autenticado con JWT)
+ * @body    {cliente, telefono, direccion, total, productos: [{id, cantidad}]}
+ */
+router.post('/usuario',
+  requireUserAuth,
+  logUserAction('CREAR_ORDEN'),
+  crearOrdenUsuario
+);
+
+/**
+ * @route   GET /api/ordenes/usuario/mis-ordenes
+ * @desc    Obtener historial de órdenes del usuario autenticado
+ * @access  Privado (Usuario autenticado con JWT)
+ * @query   {page?, limit?, estado?}
+ */
+router.get('/usuario/mis-ordenes',
+  requireUserAuth,
+  obtenerOrdenesUsuario
+);
+
+/**
+ * @route   GET /api/ordenes/usuario/:id
+ * @desc    Obtener detalle de una orden del usuario
+ * @access  Privado (Usuario autenticado con JWT, solo sus propias órdenes)
+ * @param   {id} - ID de la orden
+ */
+router.get('/usuario/:id',
+  requireUserAuth,
+  obtenerDetalleOrdenUsuario
+);
+
+// ==================== RUTAS PROTEGIDAS CON ROLES (ADMINISTRADORES) ====================
 
 // GET /api/ordenes/stats - Estadísticas de órdenes
 // Acceso: Administrador, Gerente, Asesor de Ventas

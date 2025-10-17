@@ -101,6 +101,7 @@ export class OrdenModel {
     this.total = data.total || 0;
     this.estado = data.estado || 'pendiente'; // Estado por defecto
     this.fecha = data.fecha || new Date();
+    this.usuario_id = data.usuario_id || null; // ID del usuario (null para órdenes anónimas)
   }
 
   validate() {
@@ -131,13 +132,20 @@ export class OrdenModel {
   }
 
   toDatabase() {
-    return {
+    const data = {
       cliente: this.cliente.trim(),
       telefono: this.telefono.trim(),
       direccion: this.direccion.trim(),
       total: parseFloat(this.total),
       estado: this.estado || 'pendiente'
     };
+    
+    // Solo incluir usuario_id si está presente
+    if (this.usuario_id) {
+      data.usuario_id = this.usuario_id;
+    }
+    
+    return data;
   }
 
   static fromDatabase(data) {

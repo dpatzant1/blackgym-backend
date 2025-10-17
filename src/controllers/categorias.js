@@ -5,7 +5,7 @@ import {
   update, 
   deleteRecord,
   getProductosByCategoria as getProductosByCategoriaHelper
-} from '../config/database.js';
+} from '../config/supabase.js';
 import { CategoriaModel } from '../models/index.js';
 import { validateCategoryData, sendResponse, sendError, validatePaginationParams, sanitizeData } from '../utils/validators.js';
 import { HTTP_STATUS, TABLES, PAGINATION, ACCIONES_BITACORA } from '../utils/constants.js';
