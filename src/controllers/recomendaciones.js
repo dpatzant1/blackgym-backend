@@ -230,33 +230,30 @@ const RecomendacionController = {
         };
       }
 
-      // Obtener catálogo de productos activos
-      const queryProductos = `
-        SELECT 
-          id,
-          nombre,
-          descripcion,
-          precio,
-          stock,
-          categoria_id,
-          imagen_url
-        FROM productos
-        WHERE activo = true AND stock > 0
-        ORDER BY RANDOM()
-        LIMIT 50
-      `;
+      // Obtener catálogo de productos con stock disponible usando Supabase
+      const { data: productos, error: productosError } = await supabase
+        .from('productos')
+        .select('id, nombre, descripcion, precio, stock, imagen_url')
+        .gt('stock', 0)
+        .limit(50);
 
-      const resultProductos = await pool.query(queryProductos);
+      if (productosError) {
+        console.error('Error al obtener productos:', productosError);
+        return {
+          success: false,
+          error: 'ERROR_PRODUCTOS',
+          message: 'Error al obtener el catálogo de productos',
+          detalle: productosError.message
+        };
+      }
 
-      if (resultProductos.rows.length === 0) {
+      if (!productos || productos.length === 0) {
         return {
           success: false,
           error: 'SIN_PRODUCTOS',
           message: 'No hay productos disponibles en el catálogo'
         };
       }
-
-      const productos = resultProductos.rows;
 
       // Generar recomendaciones con IA
       const resultadoIA = await generarRecomendaciones({
@@ -296,7 +293,7 @@ const RecomendacionController = {
           usuarioId,
           rec.productoId,
           rec.motivo,
-          rec.relevancia
+          'IA'  // Todas las recomendaciones de este flujo son generadas por IA
         );
 
         if (resultado.success) {

@@ -35,7 +35,7 @@ const RecomendacionModel = {
       // Verificar que el producto existe
       const { data: producto, error: productoError } = await supabase
         .from('productos')
-        .select('id, nombre, precio, stock, activo')
+        .select('id, nombre, precio, stock')
         .eq('id', productoId)
         .single();
 
@@ -47,11 +47,12 @@ const RecomendacionModel = {
         };
       }
 
-      if (!producto.activo) {
+      // Verificar que el producto tenga stock disponible
+      if (producto.stock <= 0) {
         return {
           success: false,
-          error: 'PRODUCTO_INACTIVO',
-          message: 'No se puede recomendar un producto inactivo'
+          error: 'PRODUCTO_SIN_STOCK',
+          message: 'No se puede recomendar un producto sin stock disponible'
         };
       }
 
